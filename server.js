@@ -30,7 +30,7 @@ const DEFAULT_COMPLETED = [1, 2, 3, 4, 5];   // the demo starts with Tasks 1 to 
 
 // Pretend the network is a little slow (in milliseconds) so you can SEE the
 // loading state while learning. Set it to 0 when you are finished testing.
-const FAKE_DELAY_MS = 0;
+const FAKE_DELAY_MS = 700;
 
 
 /* ---------------------------------------------------------------------
