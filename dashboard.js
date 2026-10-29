@@ -28,7 +28,7 @@
 //  - If it was opened some other way (Live Server, double-click), we use
 //    the full address of the backend instead.
 // Paste YOUR Render link here. Keep "/api" at the end, with no slash after it.
-const LIVE_API = "https://YOUR-APP-NAME.onrender.com/api";
+const LIVE_API = "https://techbridge-i5aw.onrender.com/api";
 
 const onThisComputer = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 const API_BASE = onThisComputer
