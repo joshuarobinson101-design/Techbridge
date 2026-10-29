@@ -1260,3 +1260,77 @@ button.btn { font: inherit; font-weight: 700; border: 0; cursor: pointer; }
   .bar-fill, .toast, .d-card, .tech-btn { transition: none; }
   .task-grid.animate .d-card, .d-card[data-just="true"], .tech-panel, .celebrate, #task-modal[open], #task-modal::backdrop { animation: none; }
 }
+
+
+/* =====================================================================
+   TASK 7: backend connection (status indicator, loading, errors)
+   ===================================================================== */
+
+/* ---------- Backend status pill (in the welcome area) ---------- */
+.api-status {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .25rem .85rem; border-radius: 999px; font-size: .85rem; font-weight: 700;
+  background: rgba(255,255,255,.14); color: #fff; border: 1px solid rgba(255,255,255,.3);
+}
+.api-dot { width: .6rem; height: .6rem; border-radius: 50%; background: #9aa8bb; }
+.api-status.is-online  { background: #d7f2d0; color: var(--green-dark); border-color: transparent; }
+.api-status.is-online .api-dot  { background: var(--green); animation: api-pulse 2s ease-out infinite; }
+.api-status.is-offline { background: #fde3e0; color: #a3261a; border-color: transparent; }
+.api-status.is-offline .api-dot { background: #d93b2b; }
+.api-status.is-checking .api-dot { animation: api-blink 1s ease-in-out infinite; }
+@keyframes api-pulse { 0% { box-shadow: 0 0 0 0 rgba(58,174,31,.55); } 100% { box-shadow: 0 0 0 .6rem rgba(58,174,31,0); } }
+@keyframes api-blink { 50% { opacity: .25; } }
+
+/* ---------- Loading: spinner + shimmering placeholder cards ---------- */
+.spinner {
+  display: inline-block; width: 1em; height: 1em; vertical-align: -.15em; margin-right: .4rem;
+  border: 2px solid var(--line); border-top-color: var(--blue); border-radius: 50%;
+  animation: api-spin .8s linear infinite;
+}
+.spinner-big { width: 2.6rem; height: 2.6rem; border-width: 4px; margin: 0 0 1rem; }
+@keyframes api-spin { to { transform: rotate(360deg); } }
+
+.d-card.skeleton { gap: .7rem; border-left-color: var(--line); border-style: solid; background: #fff; pointer-events: none; }
+.sk {
+  display: block; height: .9rem; border-radius: 6px;
+  background: linear-gradient(90deg, #eef1f5 25%, #f8fafc 50%, #eef1f5 75%);
+  background-size: 200% 100%; animation: api-shimmer 1.3s linear infinite;
+}
+.sk-short { width: 30%; } .sk-title { width: 70%; height: 1.3rem; } .sk-mid { width: 60%; }
+.sk-btns { width: 55%; height: 2.4rem; margin-top: .5rem; border-radius: 8px; }
+@keyframes api-shimmer { to { background-position: -200% 0; } }
+
+.progress-card.is-loading .bar-fill { background: linear-gradient(90deg, #eef1f5, #dbe3ee, #eef1f5); background-size: 200% 100%; animation: api-shimmer 1.3s linear infinite; }
+.progress-card.is-loading .pc-percent, .progress-card.is-loading .stat-row { opacity: .45; }
+.progress-card.is-error .pc-percent, .progress-card.is-error .stat-row { opacity: .35; }
+.progress-card.is-error .pc-summary { color: #a3261a; }
+
+/* ---------- Error panel ---------- */
+.api-error {
+  text-align: center; padding: 2.5rem 1.25rem; background: #fff7f6;
+  border: 2px dashed #f0b4ad; border-radius: 12px;
+}
+.api-error p { margin-left: auto; margin-right: auto; }
+.api-error h3 { color: #a3261a; }
+.ae-icon {
+  display: grid; place-items: center; width: 3.2rem; height: 3.2rem; margin: 0 auto 1rem;
+  border-radius: 50%; background: #d93b2b; color: #fff; font-size: 1.6rem; font-weight: 800;
+  animation: api-shake .5s ease 1;
+}
+.ae-hint { font-size: .95rem; color: var(--muted); }
+.ae-hint code { background: #eef1f5; padding: .1rem .4rem; border-radius: 4px; }
+.api-error .btn { margin: .5rem 0 0; }
+@keyframes api-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+
+/* ---------- Pop-up loading / error state ---------- */
+.modal-state { position: relative; text-align: center; padding: 3rem 2rem; }
+.modal-state p { margin-left: auto; margin-right: auto; }
+.modal-state .spinner-big { display: block; margin: 0 auto 1rem; }
+.modal-x-dark { color: var(--navy); background: var(--mist); }
+
+/* ---------- Disabled buttons while saving ---------- */
+.d-actions button:disabled, .modal-actions button:disabled { opacity: .6; cursor: progress; }
+
+@media (prefers-reduced-motion: reduce) {
+  .api-dot, .spinner, .sk, .ae-icon, .progress-card.is-loading .bar-fill { animation: none !important; }
+}

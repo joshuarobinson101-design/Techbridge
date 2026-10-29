@@ -1,82 +1,61 @@
 /* =====================================================================
-   TechBridge Intern Dashboard  (Task 6)
+   TechBridge Intern Dashboard  (Task 7: connected to a backend API)
+   What changed since Task 6:
+     BEFORE: the 8 tasks were typed into this file and progress was kept
+             in Local Storage (inside one browser).
+     NOW:    the tasks live on the SERVER (backend/data/tasks.json).
+             This file ASKS the server for them using fetch(), and
+             TELLS the server when a task changes.
+
    What this file does:
-     1. Holds the 8 internship tasks as DATA (an array of objects)
-     2. Builds the task cards from that data
-     3. Lets the intern mark tasks completed, and updates the progress
-     4. Filters tasks and opens a details pop-up
-     5. Runs the Technology Explorer (Next.js, Vue, Angular, Backend)
+     1. Talks to the API (fetch) and shows loading / error states
+     2. Shows whether the backend is Connected or Offline
+     3. Builds the task cards from the data the API sends back
+     4. Marks tasks completed (PUT request) and updates the progress
+     5. Filters tasks and opens a details pop-up (GET one task)
+     6. Runs the Technology Explorer (Next.js, Vue, Angular, Backend)
    Nothing here reloads the page.
    ===================================================================== */
 
 
 /* ---------------------------------------------------------------------
-   1. THE DATA
-   Each task is an OBJECT. All eight live in one ARRAY.
-   The cards on the page are generated from this list, so the HTML never
-   has to repeat itself eight times.
-   "status" starts empty: updateStatuses() works it out from what the
-   intern has completed.
+   1. SETTINGS AND STATE
 --------------------------------------------------------------------- */
-const totalTasks = 8;
-const challengeCount = 10;                 // how many challenges the Challenge Hub has
-const STORAGE_KEY = "techbridge-dashboard-progress";
-const defaultCompleted = [1, 2, 3, 4, 5];  // the demo starts with Tasks 1 to 5 done
+
+// Where is the API?
+//  - If this page was opened FROM the Express server (port 3000), a short
+//    address like "/api" is enough.
+//  - If it was opened some other way (Live Server, double-click), we use
+//    the full address of the backend instead.
+// Paste YOUR Render link here. Keep "/api" at the end, with no slash after it.
+const LIVE_API = "https://YOUR-APP-NAME.onrender.com/api";
+
+const onThisComputer = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+const API_BASE = onThisComputer
+  ? (location.port === "3000" ? "/api" : "http://localhost:3000/api")   // testing on your laptop
+  : LIVE_API;                                                           // on GitHub Pages
+
+// A free Render server can take up to a minute to wake up, so wait longer.
+const REQUEST_TIMEOUT = 60000;
+const HEALTH_CHECK_EVERY = 5000;    // ask "are you alive?" every 5 seconds
+
+const challengeCount = 10;          // how many challenges the Challenge Hub has
 
 const intern = {
   name: "Joshua",
   role: "Web Development Intern"
 };
 
-const tasks = [
-  { number: 1, title: "Build the TechBridge Homepage", day: 1, difficulty: "Beginner",
-    description: "Create the first version of the TechBridge website using HTML and CSS.",
-    build: ["A first working version of the homepage", "Page structure written in HTML5", "Colours, spacing and layout styled with CSS"],
-    skills: ["HTML", "CSS"],
-    page: "index.html", pageLabel: "Open the homepage", status: "" },
-
-  { number: 2, title: "Build the Programs Experience", day: 4, difficulty: "Beginner",
-    description: "Create a Programs page that presents TechBridge's available learning programs.",
-    build: ["A Programs page for the two tracks", "The same look and feel as the homepage", "Navigation that links the pages together"],
-    skills: ["Page layout", "Consistent styling"],
-    page: "programs.html", pageLabel: "Open the Programs page", status: "" },
-
-  { number: 3, title: "Build the Internship Tasks Experience", day: 8, difficulty: "Beginner → Intermediate",
-    description: "Create an interface that presents the internship tasks and helps visitors understand the journey.",
-    build: ["An interface that shows all eight tasks", "A clear sequence that explains the journey", "A layout that works on desktop, tablet and mobile"],
-    skills: ["Responsive layout", "Visual hierarchy"],
-    page: "tasks.html", pageLabel: "Open the Tasks page", status: "" },
-
-  { number: 4, title: "Build an Interactive Internship Roadmap", day: 11, difficulty: "Beginner → Intermediate",
-    description: "Use JavaScript to let visitors switch between the Data Analytics and Web Development tracks.",
-    build: ["Track buttons that change the page without reloading", "Task cards generated from JavaScript data", "A journey bar that updates for each track"],
-    skills: ["JavaScript", "Arrays and objects", "DOM manipulation"],
-    page: "roadmap.html", pageLabel: "Open the Roadmap", status: "" },
-
-  { number: 5, title: "Build the Challenge Hub", day: 15, difficulty: "Intermediate",
-    description: "Create a hub where visitors can browse, filter and explore practical challenges from both tracks.",
-    build: ["Challenge cards with track and difficulty", "Track, difficulty and search filters", "A details pop-up and a glass carousel"],
-    skills: ["Filtering", "Event listeners", "Modals"],
-    page: "challenges.html", pageLabel: "Open the Challenge Hub", status: "" },
-
-  { number: 6, title: "Build the Intern Dashboard", day: 19, difficulty: "Intermediate",
-    description: "Create a dashboard where an intern can see their progress, track their tasks and explore modern web technologies.",
-    build: ["A progress section that updates as tasks are completed", "A task tracker with filters and details", "A Technology Explorer for frontend and backend tools"],
-    skills: ["State and progress logic", "Dynamic HTML", "Responsive layout"],
-    page: "dashboard.html", pageLabel: "", status: "" },
-
-  { number: 7, title: "Build the Task Submission System", day: 22, difficulty: "Intermediate",
-    description: "Create an interface through which interns can prepare and submit their task work.",
-    build: ["An interface where interns prepare their task work", "A way for interns to submit that work"],
-    skills: ["Forms", "Workflow design"],
-    page: "", pageLabel: "", status: "" },
-
-  { number: 8, title: "Build the Complete Internship Platform", day: 26, difficulty: "Intermediate",
-    description: "Combine the components built during the internship into one complete TechBridge platform.",
-    build: ["The earlier components combined into one platform", "A complete experience from first visit to dashboard"],
-    skills: ["Integration", "Project completion"],
-    page: "", pageLabel: "", status: "" }
-];
+// STATE: the few values that change while the page is open.
+let tasks = [];             // starts EMPTY. The API fills it.
+let totalTasks = 8;         // updated from the real list once it arrives
+let loadState = "loading";  // "loading" | "ready" | "error"
+let backendOnline = null;   // null = not checked yet, true = connected, false = offline
+let currentFilter = "all";
+let lastCompleted = null;   // the task just completed (used for a short highlight)
+let shownPercent = 0;       // the number currently shown (used for the count-up effect)
+let toastTimer = null;
+let slowTimer = null;
 
 // Words shown for each status, and a small symbol so colour is never the only clue.
 const statusLabels = { "completed": "Completed", "in-progress": "In Progress", "not-started": "Not Started" };
@@ -87,19 +66,7 @@ const levelNumbers = { "Beginner": 1, "Beginner → Intermediate": 2, "Intermedi
 
 
 /* ---------------------------------------------------------------------
-   2. STATE: the few values that change while the page is open
-   Instead of storing every task's status by hand, we only remember
-   WHICH TASK NUMBERS are completed. Everything else is worked out from
-   that one list. One source of truth means fewer bugs.
---------------------------------------------------------------------- */
-let completedNumbers = loadProgress();
-let currentFilter = "all";
-let lastCompleted = null;      // the task just completed (used for a short highlight)
-let toastTimer = null;
-
-
-/* ---------------------------------------------------------------------
-   3. PARTS OF THE PAGE WE NEED TO CHANGE
+   2. PARTS OF THE PAGE WE NEED TO CHANGE
 --------------------------------------------------------------------- */
 const el = {
   name:        document.getElementById("intern-name"),
@@ -108,7 +75,10 @@ const el = {
   status:      document.getElementById("intern-status"),
   currentLine: document.getElementById("current-task-line"),
   continueBtn: document.getElementById("continue-btn"),
+  apiStatus:     document.getElementById("api-status"),
+  apiStatusText: document.getElementById("api-status-text"),
 
+  progressCard: document.querySelector(".progress-card"),
   pctBig:      document.getElementById("pct-big"),
   summary:     document.getElementById("progress-summary"),
   bar:         document.getElementById("bar"),
@@ -122,6 +92,8 @@ const el = {
   grid:        document.getElementById("task-grid"),
   count:       document.getElementById("task-count"),
   empty:       document.getElementById("task-empty"),
+  taskError:   document.getElementById("task-error"),
+  retryBtn:    document.getElementById("retry-btn"),
   filterBtns:  document.querySelectorAll("[data-filter]"),
   resetBtn:    document.getElementById("reset-progress"),
 
@@ -137,54 +109,189 @@ const el = {
 
 
 /* ---------------------------------------------------------------------
-   4. SAVING AND LOADING (Local Storage)
-   localStorage is a small notebook inside the visitor's browser. It
-   keeps data even after the tab is closed. It is wrapped in try/catch
-   because some browsers (private mode) refuse to let us use it.
+   3. TALKING TO THE API
+   apiRequest() is the ONE place that sends requests. Every other
+   function calls it, so the fetch details are written only once.
+
+   "async / await" means: start the request, WAIT for the answer without
+   freezing the page, then carry on with the next line.
 --------------------------------------------------------------------- */
-function loadProgress() {
+async function apiRequest(path, options) {
+  // AbortController lets us cancel a request that takes too long.
+  const controller = new AbortController();
+  const timer = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT);
+
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (Array.isArray(saved) && saved.every(function (n) { return Number.isInteger(n) && n >= 1 && n <= totalTasks; })) {
-      return saved;
+    const response = await fetch(API_BASE + path, Object.assign({ signal: controller.signal }, options));
+
+    let body = null;
+    try { body = await response.json(); } catch (error) { /* the reply had no JSON */ }
+
+    // fetch() only throws when the server cannot be REACHED.
+    // A 404 or 400 still "arrives", so we check response.ok ourselves.
+    if (!response.ok) {
+      throw new Error((body && body.error) || "The server replied with an error (" + response.status + ").");
     }
-  } catch (error) {
-    /* ignore: we fall back to the demo progress below */
+    return body;
+  } finally {
+    clearTimeout(timer);
   }
-  return defaultCompleted.slice();   // slice() makes a copy so the original is never changed
 }
 
-function saveProgress() {
+// The API calls each task's number "id". The Task 6 code used "number",
+// so we add "number" to every task as it arrives. Nothing else had to change.
+function fromApi(task) {
+  return Object.assign({}, task, { number: task.id });
+}
+
+// Turn a technical error into a sentence a person can understand.
+function friendlyError(error) {
+  if (error instanceof TypeError || error.name === "AbortError") {
+    return "Could not reach the backend. Is the server running?";
+  }
+  return error.message;
+}
+
+// Ask the server for ALL tasks. Shows the loading state first, and the
+// error state if it fails.
+async function loadTasks() {
+  loadState = "loading";
+  showLoading();
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(completedNumbers));
+    const data = await apiRequest("/tasks");           // GET /api/tasks
+    tasks = data.map(fromApi);
+    totalTasks = tasks.length;
+    loadState = "ready";
+    setBackendStatus(true);
+    renderAll();
   } catch (error) {
-    /* ignore: the dashboard still works, it just will not remember */
+    loadState = "error";
+    setBackendStatus(false);
+    showError();
+  }
+}
+
+// Same request, but quiet: no loading screen. Used after a change, so the
+// screen always matches what the SERVER says.
+async function refreshTasks() {
+  const data = await apiRequest("/tasks");
+  tasks = data.map(fromApi);
+  totalTasks = tasks.length;
+  renderAll();
+}
+
+
+/* ---------------------------------------------------------------------
+   4. BACKEND STATUS INDICATOR
+   Every few seconds we ping /api/health. If it answers, we show
+   "Connected". If not, "Offline". If the backend comes back, the
+   dashboard recovers by itself.
+--------------------------------------------------------------------- */
+function setBackendStatus(online) {
+  backendOnline = online;
+  el.apiStatus.classList.remove("is-checking", "is-online", "is-offline");
+  el.apiStatus.classList.add(online ? "is-online" : "is-offline");
+  el.apiStatusText.textContent = online ? "Connected" : "Offline";
+}
+
+async function checkBackend() {
+  const wasOnline = backendOnline;
+  try {
+    await apiRequest("/health");
+    setBackendStatus(true);
+    if (loadState === "error") {
+      loadTasks();                                       // we were stuck on the error screen: try again
+    } else if (wasOnline === false) {
+      refreshTasks().catch(function () {});              // it was away and came back: refresh quietly
+      showToast("Backend is back online.");
+    }
+  } catch (error) {
+    setBackendStatus(false);
   }
 }
 
 
 /* ---------------------------------------------------------------------
-   5. CONDITIONAL LOGIC AND PROGRESS MATH
+   5. LOADING AND ERROR STATES
+   LOADING: grey "skeleton" cards that shimmer where the real cards will
+            appear, so the page never looks empty or jumps around.
+   ERROR:   a friendly message, a hint about what to do, and a Try again
+            button. The dashboard also retries by itself when the
+            backend comes back (see checkBackend above).
 --------------------------------------------------------------------- */
-
-// Work out every task's status from the completed list.
-//   completed       -> its number is in the list
-//   in-progress     -> the FIRST task that is not completed (the current task)
-//   not-started     -> everything after that
-function updateStatuses() {
-  let currentFound = false;
-  tasks.forEach(function (task) {
-    if (completedNumbers.includes(task.number)) {
-      task.status = "completed";
-    } else if (!currentFound) {
-      task.status = "in-progress";
-      currentFound = true;
-    } else {
-      task.status = "not-started";
-    }
-  });
+function buildSkeleton() {
+  const card = '<li class="d-card skeleton" aria-hidden="true">' +
+    '<span class="sk sk-short"></span><span class="sk sk-title"></span>' +
+    '<span class="sk sk-line"></span><span class="sk sk-line sk-mid"></span>' +
+    '<span class="sk sk-btns"></span></li>';
+  return card.repeat(6);
 }
 
+function showLoading() {
+  clearTimeout(slowTimer);
+  el.taskError.hidden = true;
+  el.progressCard.classList.remove("is-error");
+  el.progressCard.classList.add("is-loading");
+
+  el.message.textContent = "Getting your tasks from the TechBridge backend…";
+  el.status.textContent = "Loading…";
+  el.status.className = "status-badge st-not-started";
+  el.currentLine.innerHTML = '<span class="status-line-label">Current task</span> Loading…';
+  el.continueBtn.hidden = true;
+
+  el.pctBig.textContent = "–";
+  el.summary.textContent = "Loading your progress…";
+  [el.statTotal, el.statDone, el.statLeft, el.statPct].forEach(function (node) { node.textContent = "–"; });
+  el.barFill.style.width = "0%";
+  el.celebrate.hidden = true;
+  shownPercent = 0;
+
+  el.filterBtns.forEach(function (button) { button.querySelector(".f-count").textContent = ""; });
+  el.count.innerHTML = '<span class="spinner" aria-hidden="true"></span> Loading tasks…';
+  el.empty.hidden = true;
+  el.grid.hidden = false;
+  el.grid.classList.remove("animate");
+  el.grid.setAttribute("aria-busy", "true");
+  el.grid.innerHTML = buildSkeleton();
+
+  // If the server is slow, say so instead of leaving people guessing.
+  slowTimer = setTimeout(function () {
+    el.count.innerHTML = '<span class="spinner" aria-hidden="true"></span> Still working… the server is taking longer than usual.';
+  }, 3000);
+}
+
+function showError() {
+  clearTimeout(slowTimer);
+  el.progressCard.classList.remove("is-loading");
+  el.progressCard.classList.add("is-error");
+
+  el.message.textContent = "We could not reach the TechBridge backend.";
+  el.status.textContent = "Unavailable";
+  el.status.className = "status-badge st-not-started";
+  el.currentLine.innerHTML = '<span class="status-line-label">Current task</span> Unavailable while offline';
+  el.continueBtn.hidden = true;
+
+  el.pctBig.textContent = "–";
+  el.summary.textContent = "Progress is unavailable while the backend is offline.";
+  [el.statTotal, el.statDone, el.statLeft, el.statPct].forEach(function (node) { node.textContent = "–"; });
+  el.barFill.style.width = "0%";
+  el.celebrate.hidden = true;
+
+  el.count.textContent = "";
+  el.grid.removeAttribute("aria-busy");
+  el.grid.innerHTML = "";
+  el.grid.hidden = true;
+  el.empty.hidden = true;
+  el.taskError.hidden = false;
+}
+
+
+/* ---------------------------------------------------------------------
+   6. CONDITIONAL LOGIC AND PROGRESS MATH
+   (The server now decides each task's status, so updateStatuses() from
+   Task 6 is gone. These functions only READ the data.)
+--------------------------------------------------------------------- */
 function countCompleted() {
   return tasks.filter(function (task) { return task.status === "completed"; }).length;
 }
@@ -225,13 +332,9 @@ function buildMeter(difficulty) {
   return '<span class="meter" aria-hidden="true">' + bars + "</span>";
 }
 
-function findTask(number) {
-  return tasks.find(function (task) { return task.number === number; });
-}
-
 
 /* ---------------------------------------------------------------------
-   6. DRAWING THE PAGE
+   7. DRAWING THE PAGE
    Each render function reads the current data and updates one area.
 --------------------------------------------------------------------- */
 function renderWelcome(done) {
@@ -256,12 +359,33 @@ function renderWelcome(done) {
   }
 }
 
+// The big percentage counts up (or down) to its new value instead of jumping.
+function animatePercent(target) {
+  const from = shownPercent;
+  shownPercent = target;
+
+  if (from === target || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.pctBig.textContent = target;
+    return;
+  }
+  const start = performance.now();
+  const duration = 700;
+
+  function step(now) {
+    const t = Math.min((now - start) / duration, 1);
+    el.pctBig.textContent = Number((from + (target - from) * t).toFixed(1));
+    if (t < 1 && shownPercent === target) { requestAnimationFrame(step); }
+    else { el.pctBig.textContent = shownPercent; }
+  }
+  requestAnimationFrame(step);
+}
+
 function renderProgress(done) {
   const remaining = totalTasks - done;
   const percent = getPercent(done);
 
   el.summary.textContent = done + " / " + totalTasks + " Tasks Completed, " + remaining + (remaining === 1 ? " Task Remaining" : " Tasks Remaining");
-  el.pctBig.textContent = percent;
+  animatePercent(percent);
   el.statTotal.textContent = totalTasks;
   el.statDone.textContent = done;
   el.statLeft.textContent = remaining;
@@ -320,6 +444,7 @@ function renderTasks(animate) {
     return currentFilter === "all" || task.status === currentFilter;
   });
 
+  el.grid.removeAttribute("aria-busy");
   el.grid.classList.toggle("animate", animate);
   el.grid.innerHTML = list.map(buildTaskCard).join("");
 
@@ -330,7 +455,10 @@ function renderTasks(animate) {
 
 // One function to refresh everything that depends on the data.
 function renderAll(animateGrid) {
-  updateStatuses();
+  clearTimeout(slowTimer);
+  el.progressCard.classList.remove("is-loading", "is-error");
+  el.taskError.hidden = true;
+
   const done = countCompleted();
   renderWelcome(done);
   renderProgress(done);
@@ -340,7 +468,13 @@ function renderAll(animateGrid) {
 
 
 /* ---------------------------------------------------------------------
-   7. CHANGING PROGRESS
+   8. CHANGING PROGRESS (sends requests to the backend)
+   The flow when you press "Mark as Completed":
+     1. The button says "Saving…"
+     2. JavaScript sends   PUT /api/tasks/3   { "status": "completed" }
+     3. The server updates the task and replies
+     4. We ask for the fresh list (GET /api/tasks)
+     5. The cards and the progress numbers redraw
 --------------------------------------------------------------------- */
 function showToast(message) {
   el.toast.textContent = message;
@@ -349,49 +483,112 @@ function showToast(message) {
   toastTimer = setTimeout(function () { el.toast.classList.remove("show"); }, 4000);
 }
 
-function completeTask(number) {
-  if (!completedNumbers.includes(number)) {
-    completedNumbers.push(number);
-  }
-  lastCompleted = number;
-  saveProgress();
-  renderAll();
+function progressText(done) {
+  return done + " / " + totalTasks + " (" + getPercent(done) + "%)";
+}
 
-  const done = countCompleted();
-  if (done === totalTasks) {
-    showToast("All 8 tasks completed. Congratulations!");
-  } else {
-    showToast("Task " + number + " completed. " + done + " / " + totalTasks + " done (" + getPercent(done) + "%).");
+// Returns true if the change was saved, false if it failed.
+async function changeStatus(number, newStatus, button) {
+  const before = countCompleted();
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving…";
+  }
+
+  try {
+    await apiRequest("/tasks/" + number, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus })
+    });
+    lastCompleted = newStatus === "completed" ? number : null;
+    await refreshTasks();
+    setBackendStatus(true);
+
+    const after = countCompleted();
+    if (newStatus === "completed" && after === totalTasks) {
+      showToast("All " + totalTasks + " tasks completed. Congratulations!");
+    } else if (newStatus === "completed") {
+      showToast("Task " + number + " completed. " + progressText(before) + " → " + progressText(after));
+    } else {
+      showToast("Task " + number + " moved back to your to-do list. " + progressText(before) + " → " + progressText(after));
+    }
+    return true;
+  } catch (error) {
+    if (error instanceof TypeError || error.name === "AbortError") { setBackendStatus(false); }
+    showToast("Could not save the change. " + friendlyError(error));
+    if (loadState === "ready") { renderTasks(false); }   // put the button back to normal
+    return false;
   }
 }
 
-function undoTask(number) {
-  // filter() keeps everything EXCEPT this number
-  completedNumbers = completedNumbers.filter(function (n) { return n !== number; });
-  lastCompleted = null;
-  saveProgress();
-  renderAll();
-  showToast("Task " + number + " moved back to your to-do list.");
-}
+function completeTask(number, button) { return changeStatus(number, "completed", button); }
+function undoTask(number, button)     { return changeStatus(number, "not-started", button); }
 
-function resetProgress() {
-  completedNumbers = defaultCompleted.slice();
-  lastCompleted = null;
-  saveProgress();
-  renderAll();
-  showToast("Progress reset to the demo state.");
+async function resetProgress() {
+  el.resetBtn.disabled = true;
+  try {
+    await apiRequest("/reset", { method: "POST" });    // POST /api/reset
+    lastCompleted = null;
+    await refreshTasks();
+    showToast("Progress reset to the demo state.");
+  } catch (error) {
+    showToast("Could not reset. " + friendlyError(error));
+  } finally {
+    el.resetBtn.disabled = false;
+  }
 }
 
 
 /* ---------------------------------------------------------------------
-   8. THE TASK DETAILS POP-UP
-   Same <dialog> idea as the Challenge Hub: showModal() opens it on top
-   of the page without leaving it.
+   9. THE TASK DETAILS POP-UP
+   When you press View Task, we ask the API for THAT ONE task:
+       GET /api/tasks/3
+   The pop-up opens straight away with a spinner, then fills in when the
+   answer arrives. If the request fails, the pop-up shows a message.
 --------------------------------------------------------------------- */
-function openTask(number) {
-  const task = findTask(number);
-  if (!task) { return; }
+function showInModal(html) {
+  el.modalBody.innerHTML = html;
+  document.body.classList.add("modal-open");
+  if (!el.modal.open) {                       // calling showModal() twice would cause an error
+    if (typeof el.modal.showModal === "function") {
+      el.modal.showModal();
+    } else {
+      el.modal.setAttribute("open", "");
+    }
+  }
+  el.modal.scrollTop = 0;
+}
 
+async function openTask(number) {
+  // Only show the spinner when the pop-up is not already open
+  // (after "Mark as Completed" we just swap the content quietly).
+  if (!el.modal.open) {
+    showInModal(`
+      <div class="modal-state">
+        <button type="button" class="modal-x modal-x-dark" data-close aria-label="Close">&times;</button>
+        <span class="spinner spinner-big" aria-hidden="true"></span>
+        <h3 id="task-modal-title">Loading task…</h3>
+        <p>Fetching the details from the backend.</p>
+      </div>`);
+  }
+
+  try {
+    const task = fromApi(await apiRequest("/tasks/" + number));   // GET /api/tasks/3
+    showInModal(buildTaskModal(task));
+  } catch (error) {
+    showInModal(`
+      <div class="modal-state">
+        <button type="button" class="modal-x modal-x-dark" data-close aria-label="Close">&times;</button>
+        <h3 id="task-modal-title">Unable to load this task.</h3>
+        <p>${friendlyError(error)}</p>
+        <button type="button" class="btn-close" data-close>Close</button>
+      </div>`);
+  }
+}
+
+function buildTaskModal(task) {
   const listItems = function (items) {
     return items.map(function (item) { return "<li>" + item + "</li>"; }).join("");
   };
@@ -407,7 +604,7 @@ function openTask(number) {
     pageLink = '<span class="here-note">You are on this page right now</span>';
   }
 
-  el.modalBody.innerHTML = `
+  return `
     <div class="modal-head st-${task.status}">
       <button type="button" class="modal-x" data-close aria-label="Close task details">&times;</button>
       <div class="c-top">
@@ -437,16 +634,6 @@ function openTask(number) {
         <button type="button" class="btn-close" data-close>Close</button>
       </div>
     </div>`;
-
-  document.body.classList.add("modal-open");
-  if (!el.modal.open) {                       // calling showModal() twice would cause an error
-    if (typeof el.modal.showModal === "function") {
-      el.modal.showModal();
-    } else {
-      el.modal.setAttribute("open", "");
-    }
-  }
-  el.modal.scrollTop = 0;
 }
 
 function closeModal() {
@@ -456,14 +643,14 @@ function closeModal() {
 
 
 /* ---------------------------------------------------------------------
-   9. EVENT LISTENERS
+   10. EVENT LISTENERS
    EVENT DELEGATION: the cards are rebuilt every time, so instead of
    attaching a listener to every button we listen ONCE on the parent
    and use closest() to see which button was clicked.
 --------------------------------------------------------------------- */
 
 // Buttons inside the task grid: View, Complete, Undo
-el.grid.addEventListener("click", function (event) {
+el.grid.addEventListener("click", async function (event) {
   const viewBtn     = event.target.closest("[data-view]");
   const completeBtn = event.target.closest("[data-complete]");
   const undoBtn     = event.target.closest("[data-undo]");
@@ -472,11 +659,11 @@ el.grid.addEventListener("click", function (event) {
     openTask(Number(viewBtn.dataset.view));
   } else if (completeBtn) {
     const n = Number(completeBtn.dataset.complete);
-    completeTask(n);
+    await completeTask(n, completeBtn);
     focusCard(n);
   } else if (undoBtn) {
     const n = Number(undoBtn.dataset.undo);
-    undoTask(n);
+    await undoTask(n, undoBtn);
     focusCard(n);
   }
 });
@@ -493,8 +680,11 @@ el.continueBtn.addEventListener("click", function () {
   openTask(Number(el.continueBtn.dataset.view));
 });
 
+// "Try again" button on the error panel
+el.retryBtn.addEventListener("click", loadTasks);
+
 // Buttons inside the pop-up
-el.modal.addEventListener("click", function (event) {
+el.modal.addEventListener("click", async function (event) {
   if (event.target.closest("[data-close]") || event.target === el.modal) {
     closeModal();
     return;
@@ -503,16 +693,24 @@ el.modal.addEventListener("click", function (event) {
   const undoBtn     = event.target.closest("[data-undo]");
   if (completeBtn) {
     const n = Number(completeBtn.dataset.complete);
-    completeTask(n);
-    openTask(n);                                   // redraw the pop-up with the new status
-    const again = el.modalBody.querySelector("[data-undo]");
-    if (again) { again.focus(); }
+    if (await completeTask(n, completeBtn)) {
+      await openTask(n);                           // redraw the pop-up with the new status
+      const again = el.modalBody.querySelector("[data-undo]");
+      if (again) { again.focus(); }
+    } else {
+      completeBtn.disabled = false;
+      completeBtn.textContent = "Mark as Completed";
+    }
   } else if (undoBtn) {
     const n = Number(undoBtn.dataset.undo);
-    undoTask(n);
-    openTask(n);
-    const again = el.modalBody.querySelector("[data-complete]");
-    if (again) { again.focus(); }
+    if (await undoTask(n, undoBtn)) {
+      await openTask(n);
+      const again = el.modalBody.querySelector("[data-complete]");
+      if (again) { again.focus(); }
+    } else {
+      undoBtn.disabled = false;
+      undoBtn.textContent = "Undo completion";
+    }
   }
 });
 el.modal.addEventListener("close", function () {
@@ -520,13 +718,14 @@ el.modal.addEventListener("close", function () {
 });
 
 // Filter buttons: All / Completed / In Progress / Not Started
+// The filter works on the tasks we already received from the API.
 el.filterBtns.forEach(function (button) {
   button.addEventListener("click", function () {
     currentFilter = button.dataset.filter;
     el.filterBtns.forEach(function (b) {
       b.setAttribute("aria-pressed", b === button ? "true" : "false");
     });
-    renderTasks(true);
+    if (loadState === "ready") { renderTasks(true); }
   });
 });
 
@@ -534,7 +733,7 @@ el.resetBtn.addEventListener("click", resetProgress);
 
 
 /* ---------------------------------------------------------------------
-   10. TECHNOLOGY EXPLORER
+   11. TECHNOLOGY EXPLORER
    Same pattern again: DATA (an object holding every technology) plus a
    function that draws one of them. Clicking a button just calls
    showTech("vue") and the panel is rebuilt with Vue's information.
@@ -619,7 +818,7 @@ const techData = {
       { name: ".NET", lang: "C#", text: "Microsoft's platform for building reliable, large-scale business applications." }
     ],
     noteTitle: "How this connects to your dashboard",
-    note: "Right now your dashboard remembers progress using Local Storage, which lives only in this one browser. With a backend and a database, Joshua's progress would be saved on a server, so it would be the same on a phone, a laptop or any other device.",
+    note: "Your dashboard now has a real backend: a Node.js and Express server that holds the tasks and answers requests like GET /api/tasks and PUT /api/tasks/3. The progress is saved on the server instead of in one browser, so it no longer depends on which device you open the page on. The next step up would be storing it in a database.",
     link: "https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Server-side",
     linkLabel: "Learn more about backend development"
   }
@@ -675,8 +874,9 @@ el.techButtons.forEach(function (button) {
 
 
 /* ---------------------------------------------------------------------
-   11. RUN ONCE WHEN THE PAGE LOADS
+   12. RUN ONCE WHEN THE PAGE LOADS
 --------------------------------------------------------------------- */
 el.challengeCount.textContent = challengeCount;
-renderAll();
+loadTasks();                                        // ask the API for the tasks
+setInterval(checkBackend, HEALTH_CHECK_EVERY);      // keep watching the backend
 showTech("nextjs");

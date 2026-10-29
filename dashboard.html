@@ -45,6 +45,12 @@
             <span class="status-badge" id="intern-status"></span>
           </p>
           <p class="status-line" id="current-task-line"></p>
+          <p class="status-line">
+            <span class="status-line-label">Backend Status</span>
+            <span class="api-status is-checking" id="api-status" role="status" aria-live="polite">
+              <span class="api-dot" aria-hidden="true"></span><span id="api-status-text">Checking…</span>
+            </span>
+          </p>
           <p class="hero-actions">
             <button type="button" class="btn btn-primary" id="continue-btn">Continue Task</button>
             <a class="btn btn-secondary" href="challenges.html">Explore Challenges</a>
@@ -81,7 +87,7 @@
       </div>
     </section>
 
-    <!-- C. TASK TRACKER. The cards are built by JavaScript from the data in dashboard.js -->
+    <!-- C. TASK TRACKER. The cards are built by JavaScript from the data the backend API sends (GET /api/tasks) -->
     <section id="tracker" aria-labelledby="tracker-title">
       <div class="tracker-head">
         <div>
@@ -96,6 +102,15 @@
         <button type="button" class="chip chip-done" data-filter="completed" aria-pressed="false"><span>Completed</span><span class="f-count"></span></button>
         <button type="button" class="chip chip-now" data-filter="in-progress" aria-pressed="false"><span>In Progress</span><span class="f-count"></span></button>
         <button type="button" class="chip chip-todo" data-filter="not-started" aria-pressed="false"><span>Not Started</span><span class="f-count"></span></button>
+      </div>
+
+      <!-- Shown by JavaScript when the API cannot be reached -->
+      <div class="api-error" id="task-error" role="alert" hidden>
+        <div class="ae-icon" aria-hidden="true">!</div>
+        <h3>Unable to load tasks.</h3>
+        <p>Please check your connection or try again.</p>
+        <p class="ae-hint">Tip: the backend may be switched off. Open a terminal in the <code>backend</code> folder and run <code>npm start</code>. This page will reconnect by itself when the server is back.</p>
+        <button type="button" class="btn btn-primary" id="retry-btn">Try again</button>
       </div>
 
       <p class="result-count" id="task-count" aria-live="polite"></p>
