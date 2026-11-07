@@ -1,15 +1,8 @@
 {
-  "name": "techbridge-task-management",
+  "name": "techbridge-final-project",
   "version": "1.0.0",
-  "description": "Backend API for the TechBridge Intern Dashboard (Task 7)",
+  "description": "TechBridge Intern Management Platform",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "keywords": [],
-  "author": "Joshua",
-  "license": "ISC",
-  "dependencies": {
-    "express": "^5.1.0"
-  }
+  "scripts": { "start": "node server.js", "dev": "node --watch server.js" },
+  "dependencies": { "express": "^4.19.2" }
 }
